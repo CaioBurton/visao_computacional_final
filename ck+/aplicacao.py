@@ -1,92 +1,94 @@
 import cv2
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.preprocessing.image import img_to_array
+import matplotlib.pyplot as plt
 
-# ==============================
+# ===============================
+# Configurações
+# ===============================
+IMG_HEIGHT, IMG_WIDTH = 48, 48  # Dimensões esperadas pelo modelo
+CLASS_NAMES = ['bom', 'ruim']  # Ajuste conforme suas classes
+MODEL_PATH = 'modelo_cnn_ckplus.h5'
+
 # Carregar o modelo treinado
-# ==============================
-modelo = tf.keras.models.load_model(r'C:\Users\Caio Burton\Desktop\trab_final\ck+\modelo_cnn_ckplus.h5')
+model = tf.keras.models.load_model(MODEL_PATH)
 
-# Mapeamento dos índices para rótulos (ajuste se necessário)
-# Aqui, assumindo que o mapeamento foi: 'bom' -> 0, 'ruim' -> 1 (ou vice-versa, confira o seu mapping)
-class_names = {0: 'bom', 1: 'ruim'}  
+# Carregar o classificador Haarcascade para detecção de rosto
+haarcascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+face_cascade = cv2.CascadeClassifier(haarcascade_path)
 
-# ==============================
-# Carregar o classificador Haar Cascade para detecção facial
-# ==============================
-# Se necessário, informe o caminho completo para o arquivo haarcascade_frontalface_default.xml
-haar_cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-face_cascade = cv2.CascadeClassifier(haar_cascade_path)
+# ===============================
+# Função para detectar e recortar o rosto
+# ===============================
+def detect_face(image_path):
+    """
+    Detecta rostos na imagem e retorna a região do rosto recortada e as coordenadas do rosto.
+    """
+    # Carregar a imagem
+    img = cv2.imread(image_path)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-# ==============================
-# Parâmetros de pré-processamento
-# ==============================
-IMG_HEIGHT, IMG_WIDTH = 48, 48
+    # Detectar rostos na imagem
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-# ==============================
-# Inicializar a captura de vídeo pela webcam
-# ==============================
-cap = cv2.VideoCapture(0)
+    if len(faces) == 0:
+        print("Nenhum rosto detectado na imagem.")
+        return None, img, None
 
-if not cap.isOpened():
-    print("Erro ao abrir a câmera!")
-    exit()
+    # Selecionar o primeiro rosto detectado
+    x, y, w, h = faces[0]
+    face = gray[y:y+h, x:x+w]
 
-print("Pressione 'q' para sair.")
+    return face, img, (x, y, w, h)
 
-while True:
-    # Captura o frame a partir da webcam
-    ret, frame = cap.read()
-    
-    if not ret:
-        print("Falha na captura do frame")
-        break
+# ===============================
+# Função para processar a imagem do rosto
+# ===============================
+def preprocess_face(face):
+    """
+    Pré-processa o rosto para o formato esperado pelo modelo.
+    """
+    face_resized = cv2.resize(face, (IMG_HEIGHT, IMG_WIDTH))  # Redimensionar
+    face_array = img_to_array(face_resized) / 255.0  # Normalizar
+    face_array = np.expand_dims(face_array, axis=0)  # Adicionar dimensão de batch
+    return face_array
 
-    # Converter o frame para escala de cinza para a detecção facial
-    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    
-    # Detectar faces na imagem
-    faces = face_cascade.detectMultiScale(gray_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+# ===============================
+# Função para classificar a imagem
+# ===============================
+def classify_image(image_path):
+    """
+    Detecta o rosto na imagem, processa e classifica.
+    """
+    face, original_img, bbox = detect_face(image_path)
 
-    # Para cada face detectada (nesse exemplo, processamos apenas a primeira)
-    for (x, y, w, h) in faces:
-        # Extrair a região de interesse (ROI) da face
-        face_roi = gray_frame[y:y+h, x:x+w]
-        
-        # Pré-processar a ROI:
-        # - Redimensionar para (48, 48)
-        # - Normalizar a imagem (0-1)
-        face_resized = cv2.resize(face_roi, (IMG_WIDTH, IMG_HEIGHT))
-        face_normalized = face_resized.astype("float32") / 255.0
-        
-        # Expandir as dimensões para adequar ao formato (batch_size, altura, largura, canais)
-        face_input = np.expand_dims(face_normalized, axis=0)  # adiciona dimensão do batch
-        face_input = np.expand_dims(face_input, axis=-1)        # adiciona dimensão do canal (1)
-        
-        # Realizar a predição
-        pred = modelo.predict(face_input)
-        
-        # Como o modelo utiliza ativação sigmoid, um limiar de 0.5 é utilizado para distinguir as classes
-        pred_label = 0 if pred[0] < 0.5 else 1
-        
-        # Obter o rótulo textual
-        label_text = class_names[pred_label]
-        
-        # Exibir o retângulo da face e o rótulo na imagem
-        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
-        cv2.putText(frame, label_text, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.9, (0, 255, 0), 2)
-        
-        # Processa apenas a primeira face detectada para evitar múltiplos desenhos
-        break
+    if face is None or bbox is None:
+        return None
 
-    # Exibir o frame com as anotações
-    cv2.imshow('Reconhecimento de Emoção (bom vs ruim)', frame)
+    # Pré-processar o rosto detectado
+    processed_face = preprocess_face(face)
+    prediction = model.predict(processed_face)
+    predicted_class = CLASS_NAMES[int(prediction[0] > 0.5)]  # Limiar para classificação binária
 
-    # Sair se a tecla 'q' for pressionada
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+    # Desenhar o retângulo verde na imagem original com base no bbox
+    x, y, w, h = bbox
+    cv2.rectangle(original_img, (x, y), (x+w, y+h), (0, 255, 0), 2)
 
-# Libera a captura e fecha as janelas
-cap.release()
-cv2.destroyAllWindows()
+    # Exibir a imagem original com o rosto detectado e a classificação
+    plt.imshow(cv2.cvtColor(original_img, cv2.COLOR_BGR2RGB))
+    plt.title(f'Classificação: {predicted_class}')
+    plt.axis('off')
+    plt.show()
+
+    return predicted_class
+
+# ===============================
+# Caminho da imagem de teste
+# ===============================
+image_path = r'C:\Users\LIMCI\Desktop\trab_final\teste\teste_ruim6.jpg'
+
+# Classificar a imagem
+resultado = classify_image(image_path)
+if resultado:
+    print(f'A classe prevista é: {resultado}')

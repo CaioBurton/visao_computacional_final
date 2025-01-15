@@ -1,0 +1,8 @@
+Resumo do Dataset
+Total de imagens: 981.
+Treino: 687 imagens (70% do total).
+Validação: 147 imagens (15% do total).
+Teste: 147 imagens (15% do total).
+Classes:
+bom: Representa emoções positivas (happy, surprise).
+ruim: Representa emoções negativas (sadness, disgust, fear, anger, contempt).
