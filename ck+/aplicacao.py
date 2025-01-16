@@ -86,7 +86,7 @@ def classify_image(image_path):
 # ===============================
 # Caminho da imagem de teste
 # ===============================
-image_path = r'C:\Users\LIMCI\Desktop\trab_final\teste\teste_boa8.jpg'
+image_path = "C:/Users/Caio Burton/Documents/dataset_visao/teste/teste_boa1.png"
 
 # Classificar a imagem
 resultado = classify_image(image_path)
